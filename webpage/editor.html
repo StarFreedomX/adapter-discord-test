@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Satori → Discord Preview</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { display:flex; height:100vh; font-family:system-ui,sans-serif; background:#1e1f22; color:#dcddde; }
+#editor-pane { width:45%; display:flex; flex-direction:column; border-right:1px solid #3f4147; }
+#editor-pane h2 { padding:12px 16px; font-size:14px; color:#b5bac1; background:#2b2d31; }
+.editor-wrapper { flex:1; overflow:hidden; }
+.editor-wrapper .CodeMirror { height:100%; font:14px/1.6 'Cascadia Code',Consolas,monospace; background:#1e1f22; }
+.insert-bar { display:flex; gap:4px; padding:4px 16px; background:#2b2d31; flex-wrap:wrap; border-bottom:1px solid #3f4147; }
+.insert-bar button { background:#3f4147; color:#dcddde; border:none; padding:3px 8px; border-radius:3px; font-size:11px; cursor:pointer; white-space:nowrap; }
+.insert-bar button:hover { background:#5865f2; }
+.insert-bar .insert-label { color:#949ba4; font-size:11px; padding:3px 4px 3px 0; }
+.h-output-wrapper { flex:0 0 160px; overflow:hidden; }
+.h-output-wrapper .CodeMirror { height:100%; font:13px/1.5 'Cascadia Code',Consolas,monospace; background:#1e1f22; }
+#preview-pane { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+#output { flex:1; min-height:0; overflow-y:auto; padding:24px; background:#313338; }
+#preview-pane h2 { flex:0 0 auto; padding:12px 16px; font-size:14px; color:#b5bac1; background:#2b2d31; }
+.cm-s-nord .cm-tag { color:#6a9ecf !important; }
+.cm-s-nord .cm-bracket { color:#72767d !important; }
+.cm-s-nord .cm-attribute { color:#8bc48b !important; }
+.cm-s-nord .cm-string { color:#a5d6ff !important; }
+#error { color:#f23f43; padding:8px 16px; font-size:13px; background:#2b2d31; display:none; }
+#samples { display:flex; gap:6px; padding:8px 16px; background:#2b2d31; flex-wrap:wrap; }
+#samples button { background:#4e5058; color:#dcddde; border:none; padding:4px 10px; border-radius:3px; font-size:12px; cursor:pointer; }
+#samples button:hover { background:#6d6f78; }
+
+/* Discord message styles */
+.msg { display:flex; padding:8px 0 4px 0; gap:12px; }
+.msg-avatar { width:40px; height:40px; border-radius:50%; flex-shrink:0; background:#5865f2; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:16px; }
+.msg-body { flex:1; min-width:0; }
+.msg-header { display:flex; align-items:baseline; gap:8px; margin-bottom:2px; }
+.msg-name { font-weight:600; font-size:15px; color:#f2f3f5; }
+.msg-time { font-size:11px; color:#949ba4; }
+.msg-content { font-size:15px; line-height:1.45; color:#dbdee1; word-break:break-word; }
+.msg-content b, .msg-content strong { font-weight:700; }
+.msg-content i, .msg-content em { font-style:italic; }
+.msg-content u, .msg-content ins { text-decoration:underline; }
+.msg-content s, .msg-content del { text-decoration:line-through; }
+.msg-content .spoiler { background:#202225; color:#202225; border-radius:3px; cursor:pointer; }
+.msg-content .spoiler:hover { background:#36383d; color:#36383d; }
+.msg-content .spoiler.revealed { background:rgba(255,255,255,0.1); color:inherit; }
+.msg-content code { background:#2b2d31; border:1px solid #1e1f22; border-radius:4px; padding:0 3px; font:13px 'Cascadia Code',Consolas,monospace; }
+.msg-content pre { background:#1e1f22; border:1px solid #2b2d31; border-radius:6px; padding:12px; margin:6px 0; overflow-x:auto; font:13px/1.5 'Cascadia Code',Consolas,monospace; }
+.msg-content pre code { background:none; border:none; padding:0; font-size:inherit; }
+.msg-content .lang-label { display:block; color:#949ba4; font-size:11px; margin-bottom:4px; }
+.msg-content a { color:#00a8fc; text-decoration:none; }
+.msg-content a:hover { text-decoration:underline; }
+.msg-content .mention { background:rgba(88,101,242,0.3); color:#c9cdfb; border-radius:3px; padding:0 2px; font-weight:500; cursor:pointer; transition:background .15s; }
+.msg-content .mention:hover { background:rgba(88,101,242,0.5); text-decoration:underline; }
+.msg-content .channel { background:rgba(88,101,242,0.3); color:#c9cdfb; border-radius:3px; padding:0 2px; cursor:pointer; }
+.msg-content .channel:hover { background:rgba(88,101,242,0.5); text-decoration:underline; }
+.msg-content .emoji { font-size:20px; vertical-align:middle; }
+blockquote.msg-blockquote { border-left:4px solid #4e5058; padding:0 0 0 12px; margin:4px 0; color:#b5bac1; }
+.msg-has-reply { position:relative; padding-top:22px; }
+.msg-has-reply > .reply-line { position:absolute; left:20px; top:10px; width:32px; height:10px; border-left:2px solid #4e5058; border-top:2px solid #4e5058; border-top-left-radius:6px; pointer-events:none; }
+.msg-reply { position:absolute; top:2px; left:56px; right:12px; display:flex; align-items:center; gap:6px; color:#b5bac1; font-size:13px; height:18px; overflow:hidden; }
+.msg-reply img.reply-avatar { width:16px; height:16px; border-radius:50%; flex-shrink:0; }
+.msg-reply .reply-name { font-weight:500; color:#f2f3f5; white-space:nowrap; flex-shrink:0; }
+.msg-reply .reply-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#949ba4; }
+.msg-embed { border-left:4px solid #5865f2; background:#2b2d31; border-radius:4px; padding:12px; margin:8px 0; max-width:max-content; }
+.msg-embed-title { font-weight:600; color:#f2f3f5; }
+.msg-embed-title a { color:#00a8fc; }
+.msg-embed-desc { margin-top:4px; font-size:14px; }
+.msg-embed-author { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.msg-embed-author img { width:24px; height:24px; border-radius:50%; }
+.msg-embed-fields { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.msg-embed-field { min-width:100px; }
+.msg-embed-field.inline { flex:1; min-width:120px; }
+.msg-embed-field .name { font-weight:600; font-size:13px; }
+.msg-embed-field .value { font-size:14px; color:#dbdee1; }
+.msg-embed-footer { display:flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; color:#949ba4; }
+.msg-embed-footer img { width:20px; height:20px; border-radius:50%; }
+.msg-embed-image img { max-width:100%; border-radius:4px; margin-top:8px; }
+.msg-embed-thumb { float:right; margin:0 0 8px 12px; }
+.msg-embed-thumb img { width:80px; height:80px; border-radius:4px; object-fit:cover; }
+.msg-btn-group { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+.msg-btn { padding:6px 14px; border-radius:3px; font-size:13px; font-weight:500; cursor:pointer; }
+.msg-btn.primary { background:#5865f2; color:#fff; }
+.msg-btn.secondary { background:#4e5058; color:#fff; }
+.msg-btn.success { background:#248046; color:#fff; }
+.msg-btn.danger { background:#da373c; color:#fff; }
+.msg-btn.link { background:#4e5058; color:#00a8fc; }
+.msg-select { padding:8px 12px; margin-top:8px; background:#1e1f22; border:1px solid #3f4147; border-radius:4px; font-size:14px; color:#dcddde; cursor:pointer; width:100%; max-width:300px; }
+ul.msg-list, ol.msg-list { padding-left:24px; margin:4px 0; }
+::-webkit-scrollbar { width:8px; height:8px; }
+::-webkit-scrollbar-track { background:transparent; border:2px solid transparent; }
+::-webkit-scrollbar-thumb { background:#1e1f22; border:2px solid #2b2d31; border-radius:4px; min-height:40px; }
+::-webkit-scrollbar-thumb:hover { background:#3f4147; }
+::-webkit-scrollbar-corner { background:transparent; }
+pre code.hljs { background:none; padding:0; font-size:inherit; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/atom-one-dark.min.css">
+</head>
+<body>
+
+<div id="editor-pane">
+  <h2>Satori JSX</h2>
+  <div style="display:flex;gap:0;background:#2b2d31;padding:0 16px;border-bottom:1px solid #3f4147">
+    <button onclick="backToEdit()" id="tab-edit" style="background:#5865f2;color:#fff;border:none;padding:6px 14px;font-size:13px;cursor:pointer;border-radius:4px 4px 0 0;margin-right:2px">📝 编辑区</button>
+    <button onclick="showTemplates()" id="tab-tpl" style="background:#3f4147;color:#b5bac1;border:none;padding:6px 14px;font-size:13px;cursor:pointer;border-radius:4px 4px 0 0">📋 模板</button>
+  </div>
+  <div id="samples" style="background:#2b2d31;padding:4px 16px;display:none">
+    <button onclick="load('text')">文本</button>
+    <button onclick="load('format')">格式</button>
+    <button onclick="load('code')">代码</button>
+    <button onclick="load('link')">链接+引用</button>
+    <button onclick="load('list')">列表</button>
+    <button onclick="load('embed')">Embed</button>
+    <button onclick="load('button')">Button</button>
+    <button onclick="load('select')">Select</button>
+    <button onclick="load('quote')">回复</button>
+    <button onclick="load('figure')">图文</button>
+    <button onclick="load('media')">媒体</button>
+    <button onclick="load('nested')">嵌套</button>
+<button onclick="load('complex')">复杂组合</button>
+  </div>
+  <div class="insert-bar">
+    <span class="insert-label">插入:</span>
+    <button onclick="ins('b')">b</button><button onclick="ins('i')">i</button>
+    <button onclick="ins('u')">u</button><button onclick="ins('s')">s</button>
+    <button onclick="ins('spl')">spl</button><button onclick="ins('code')">code</button>
+    <button onclick="ins('code-block')">code-block</button><button onclick="ins('a')">a</button>
+    <button onclick="ins('at')">at</button><button onclick="ins('sharp')">sharp</button>
+    <button onclick="ins('face')">face</button><button onclick="ins('br')">br</button>
+    <button onclick="ins('blockquote')">blockquote</button>
+    <button onclick="ins('ul')">ul</button><button onclick="ins('ol')">ol</button>
+  </div>
+  <div class="insert-bar">
+    <span class="insert-label">结构:</span>
+    <button onclick="ins('message')">message</button><button onclick="ins('author')">author</button>
+    <button onclick="ins('quote')">quote</button><button onclick="ins('figure')">figure</button>
+    <button onclick="ins('img')">img</button>
+    <button onclick="ins('video')">video</button><button onclick="ins('audio')">audio</button>
+    <button onclick="ins('button')">button</button>
+    <button onclick="ins('discord:select')">select</button>
+    <button onclick="ins('discord:embed')">embed</button>
+  </div>
+  <div class="editor-wrapper" id="editor-wrapper">
+    <textarea id="input" spellcheck="false">
+<message>
+<b>粗体</b> + <i>斜体</i> + <u>下划线</u>
+<s>删除线</s> + <spl>剧透</spl>
+<code>console.log("hello")</code>
+<code-block language="js">const x = 1</code-block>
+</message></textarea>
+  </div>
+  <div id="error"></div>
+</div>
+
+<div id="preview-pane">
+  <h2>Discord 预览</h2>
+  <div id="output"></div>
+  <h2 style="border-top:1px solid #3f4147" id="h-label">h() 输出</h2>
+  <div class="h-output-wrapper" id="h-output-wrapper"><textarea id="h-output"></textarea></div>
+</div>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/nord.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/xml/xml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+<script>
+// Parser
+function parse(xml) {
+  xml = xml.trim()
+  const elements = []
+  let i = 0
+  while (i < xml.length) {
+    if (xml[i] === '<') {
+      const close = xml.indexOf('>', i)
+      if (close === -1) { i++; continue }
+      const tagContent = xml.slice(i + 1, close)
+      if (tagContent.startsWith('/')) {
+        break // closing tag, handled by recursion
+      }
+      const spaceIdx = tagContent.search(/\s/)
+      let tag, attrs = {}
+      if (spaceIdx === -1) {
+        tag = tagContent
+      } else {
+        tag = tagContent.slice(0, spaceIdx)
+        const attrStr = tagContent.slice(spaceIdx + 1)
+        const attrRe = /(\S+?)=(?:"([^"]*)"|'([^']*)')/g
+        let m
+        while ((m = attrRe.exec(attrStr))) {
+          attrs[m[1]] = m[2] || m[3] || ''
+        }
+      }
+      i = close + 1
+      const closeTag = `</${tag}>`
+      const closeIdx = xml.indexOf(closeTag, i)
+      let children = ''
+      let remaining = ''
+      if (closeIdx === -1) {
+        // Self-closing
+      } else {
+        children = xml.slice(i, closeIdx)
+        remaining = xml.slice(closeIdx + closeTag.length)
+        i = closeIdx + closeTag.length
+      }
+      elements.push({ type:tag, attrs, children:children.trim() ? parse(children) : [] })
+      // Continue parsing siblings
+    } else if (xml[i] === '\n' || xml[i] === '\r') {
+      i++
+    } else {
+      // Text node — collect until <
+      const nextTag = xml.indexOf('<', i)
+      const text = nextTag === -1 ? xml.slice(i) : xml.slice(i, nextTag)
+      if (text.trim()) elements.push({ type:'text', attrs:{content:text}, children:[] })
+      i = nextTag === -1 ? xml.length : nextTag
+    }
+  }
+  return elements
+}
+
+function renderMsg(msgEl) {
+  // Extract author info from children
+  const children = msgEl.children || []
+  const authorEl = children.find(c => c.type === 'author')
+  const name = authorEl?.attrs?.name || msgEl.attrs?.name || 'Bot'
+  const avatar = authorEl?.attrs?.avatar || msgEl.attrs?.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'
+  const initial = name[0]?.toUpperCase() || 'B'
+  const time = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
+
+  const body = document.createElement('div')
+  body.className = 'msg-body'
+
+  const rendered = children.filter(c => c.type !== 'author').map(el => renderElement(el))
+
+  // Extract reply elements — place them in .msg wrapper, before avatar
+  // Skip reply-style when author present (adapter renders embed instead)
+  const hasAuthor = authorEl != null
+  const replies = []
+  const rest = []
+  const embeds = [] // embed quotes go AFTER content, like Discord
+  for (const node of rendered) {
+    if (node?.classList?.contains('msg-reply')) {
+      if (hasAuthor) {
+        const embed = document.createElement('div')
+        embed.className = 'msg-embed'
+        const auth = document.createElement('div')
+        auth.className = 'msg-embed-author'
+        const qAva = node.querySelector('.reply-avatar')
+        const qName = (node.querySelector('.reply-name')?.textContent || '@原用户').replace(/^@/, '')
+        const qText = node.querySelector('.reply-text')?.textContent || '这是被引用的消息'
+        if (qAva) { const c = qAva.cloneNode(true); c.style.cssText = 'width:24px;height:24px;border-radius:50%'; auth.append(c) }
+        const authName = document.createElement('span')
+        authName.textContent = qName
+        auth.append(authName)
+        embed.append(auth)
+        const desc = document.createElement('div')
+        desc.className = 'msg-embed-desc'
+        const ts = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
+        desc.innerHTML = `${qText}<br><span style="color:#949ba4;font-size:11px">${ts} <a href="#" style="color:#00a8fc;cursor:pointer" onclick="event.preventDefault()">[ ↑ ]</a></span>`
+        embed.append(desc)
+        embeds.push(embed)
+      } else {
+        replies.push(node)
+      }
+    } else {
+      rest.push(node)
+    }
+  }
+  // Embeds go after message content
+  for (const e of embeds) rest.push(e)
+
+  const wrapper = document.createElement('div')
+  wrapper.className = 'msg' + (replies.length ? ' msg-has-reply' : '')
+  for (const r of replies) wrapper.append(r)
+  if (replies.length) {
+    const line = document.createElement('div')
+    line.className = 'reply-line'
+    wrapper.append(line)
+  }
+  const ava = document.createElement('div')
+  ava.className = 'msg-avatar'
+  ava.textContent = initial
+  const img = document.createElement('img')
+  img.src = avatar
+  img.style.cssText = 'width:40px;height:40px;border-radius:50%'
+  img.onload = () => { ava.innerHTML = ''; ava.append(img) }
+  wrapper.append(ava, body)
+
+  const header = document.createElement('div')
+  header.className = 'msg-header'
+  const nameEl = document.createElement('span')
+  nameEl.className = 'msg-name'
+  nameEl.textContent = name
+  const timeEl = document.createElement('span')
+  timeEl.className = 'msg-time'
+  timeEl.textContent = `今天 ${time}`
+  header.append(nameEl, timeEl)
+  body.append(header)
+
+  const content = document.createElement('div')
+  content.className = 'msg-content'
+  // Group consecutive buttons into one row
+  for (let i = 0; i < rest.length; i++) {
+    const node = rest[i]
+    if (node?.classList?.contains('msg-btn')) {
+      const group = document.createElement('div')
+      group.className = 'msg-btn-group'
+      while (i < rest.length && rest[i]?.classList?.contains('msg-btn')) {
+        group.append(rest[i])
+        i++
+      }
+      i--
+      content.append(group)
+    } else {
+      content.append(node)
+    }
+  }
+  body.append(content)
+  return wrapper
+}
+
+function renderElement(el) {
+  if (typeof el === 'string') return document.createTextNode(el)
+
+  switch (el.type) {
+    case 'text': {
+      const span = document.createElement('span')
+      span.textContent = el.attrs.content || ''
+      return span
+    }
+    case 'b': case 'strong': {
+      const b = document.createElement('b')
+      for (const c of el.children) b.append(renderElement(c))
+      return b
+    }
+    case 'i': case 'em': {
+      const i = document.createElement('i')
+      for (const c of el.children) i.append(renderElement(c))
+      return i
+    }
+    case 'u': case 'ins': {
+      const u = document.createElement('u')
+      for (const c of el.children) u.append(renderElement(c))
+      return u
+    }
+    case 's': case 'del': {
+      const s = document.createElement('s')
+      for (const c of el.children) s.append(renderElement(c))
+      return s
+    }
+    case 'spl': {
+      const span = document.createElement('span')
+      span.className = 'spoiler'
+      span.textContent = el.children.map(c => typeof c === 'string' ? c : c.attrs?.content || '').join('')
+      span.onclick = () => span.classList.toggle('revealed')
+      return span
+    }
+    case 'code': {
+      const code = document.createElement('code')
+      code.textContent = el.children.map(c => typeof c === 'string' ? c : c.attrs?.content || '').join('')
+      return code
+    }
+    case 'code-block': {
+      const pre = document.createElement('pre')
+      const lang = el.attrs.language || el.attrs.lang || ''
+      if (lang) {
+        const label = document.createElement('span')
+        label.className = 'lang-label'
+        label.textContent = lang
+        pre.append(label)
+      }
+      const code = document.createElement('code')
+      if (lang) code.className = 'language-' + lang
+      code.textContent = el.children.map(c => typeof c === 'string' ? c : c.attrs?.content || '').join('')
+      pre.append(code)
+      return pre
+    }
+    case 'a': {
+      const a = document.createElement('a')
+      a.href = el.attrs.href || '#'
+      a.target = '_blank'
+      for (const c of el.children) a.append(renderElement(c))
+      return a
+    }
+    case 'at': {
+      const span = document.createElement('span')
+      span.className = 'mention'
+      span.textContent = el.attrs.type === 'all' ? '@everyone' : el.attrs.type === 'here' ? '@here' : `@${el.attrs.name || el.attrs.id || 'user'}`
+      return span
+    }
+    case 'sharp': {
+      const span = document.createElement('span')
+      span.className = 'channel'
+      span.textContent = `#${el.attrs.name || el.attrs.id || 'channel'}`
+      return span
+    }
+    case 'br': return document.createElement('br')
+    case 'p': {
+      const div = document.createElement('div')
+      div.style.margin = '4px 0'
+      for (const c of el.children) div.append(renderElement(c))
+      return div
+    }
+    case 'blockquote': {
+      const bq = document.createElement('blockquote')
+      bq.className = 'msg-blockquote'
+      for (const c of el.children) bq.append(renderElement(c))
+      return bq
+    }
+    case 'ul': case 'ol': {
+      const list = document.createElement(el.type)
+      list.className = 'msg-list'
+      for (const c of el.children) {
+        const li = document.createElement('li')
+        li.append(renderElement(c))
+        list.append(li)
+      }
+      return list
+    }
+    case 'li': {
+      const span = document.createElement('span')
+      for (const c of el.children) span.append(renderElement(c))
+      return span
+    }
+    case 'face': {
+      const span = document.createElement('span')
+      span.className = 'emoji'
+      span.textContent = `:${el.attrs.name}:`
+      return span
+    }
+    case 'share':
+    case 'discord:embed': {
+      // Discord embed order: author → title → description → fields → image → footer
+      // thumbnail floats right
+      const parts = { author: null, title: null, desc: null, fields: [], image: null, thumbnail: null, footer: null }
+      for (const c of el.children) {
+        if (c.type === 'discord:embed-author') parts.author = c
+        else if (c.type === 'discord:embed-footer') parts.footer = c
+        else if (c.type === 'discord:embed-field') parts.fields.push(c)
+        else if (c.type === 'discord:embed-image') parts.image = c
+        else if (c.type === 'discord:embed-thumbnail') parts.thumbnail = c
+      }
+      if (el.attrs.title) parts.title = { type: 'title', attrs: el.attrs }
+      if (el.attrs.description) parts.desc = { type: 'desc', attrs: el.attrs }
+
+      const embed = document.createElement('div')
+      embed.className = 'msg-embed'
+      if (el.attrs.color != null) embed.style.borderLeftColor = '#' + (+el.attrs.color).toString(16).padStart(6, '0')
+
+      // 1. Author
+      if (parts.author) {
+        const auth = document.createElement('div'); auth.className = 'msg-embed-author'
+        if (parts.author.attrs.iconUrl) { const img = document.createElement('img'); img.src = parts.author.attrs.iconUrl; auth.append(img) }
+        const n = document.createElement('span'); n.textContent = parts.author.attrs.name || ''; auth.append(n)
+        embed.append(auth)
+      }
+      // 2. Title
+      if (parts.title) {
+        const title = document.createElement('div'); title.className = 'msg-embed-title'
+        if (parts.title.attrs.url) { const a = document.createElement('a'); a.href = parts.title.attrs.url; a.textContent = parts.title.attrs.title; title.append(a) }
+        else title.textContent = parts.title.attrs.title
+        embed.append(title)
+      }
+      // 3. Description
+      if (parts.desc) {
+        const desc = document.createElement('div'); desc.className = 'msg-embed-desc'
+        desc.textContent = el.attrs.description; embed.append(desc)
+      }
+      // 4. Fields
+      if (parts.fields.length) {
+        const fields = document.createElement('div'); fields.className = 'msg-embed-fields'
+        for (const f of parts.fields) {
+          const field = document.createElement('div'); field.className = 'msg-embed-field' + (f.attrs.inline ? ' inline' : '')
+          const n = document.createElement('div'); n.className = 'name'; n.textContent = f.attrs.name || ''; field.append(n)
+          const v = document.createElement('div'); v.className = 'value'; v.textContent = f.attrs.value || ''; field.append(v)
+          fields.append(field)
+        }
+        embed.append(fields)
+      }
+      // 5. Thumbnail (floats right)
+      if (parts.thumbnail) {
+        const wrap = document.createElement('div'); wrap.className = 'msg-embed-thumb'
+        const img = document.createElement('img'); img.src = parts.thumbnail.attrs.url; wrap.append(img)
+        embed.append(wrap)
+      }
+      // 6. Image
+      if (parts.image) {
+        const wrap = document.createElement('div'); wrap.className = 'msg-embed-image'
+        const img = document.createElement('img'); img.src = parts.image.attrs.url; wrap.append(img)
+        embed.append(wrap)
+      }
+      // 7. Footer
+      if (parts.footer) {
+        const foot = document.createElement('div'); foot.className = 'msg-embed-footer'
+        if (parts.footer.attrs.iconUrl) { const img = document.createElement('img'); img.src = parts.footer.attrs.iconUrl; foot.append(img) }
+        foot.append(document.createTextNode(parts.footer.attrs.text || ''))
+        embed.append(foot)
+      }
+      return embed
+    }
+    case 'button': {
+      const btn = document.createElement('span')
+      const cls = el.attrs.type === 'link' ? 'link' : (el.attrs.class || 'primary')
+      btn.className = `msg-btn ${cls}`
+      btn.textContent = el.children.map(c => typeof c === 'string' ? c : c.attrs?.content || '').join('') || el.attrs.label || 'Button'
+      return btn
+    }
+    case 'discord:select': {
+      const select = document.createElement('select')
+      select.className = 'msg-select'
+      const placeholder = el.attrs.placeholder || 'Select...'
+      const opt = document.createElement('option')
+      opt.textContent = placeholder
+      opt.disabled = true
+      opt.selected = true
+      select.append(opt)
+      for (const c of el.children) {
+        const o = document.createElement('option')
+        o.textContent = `${c.attrs.emoji || ''} ${c.attrs.label}`.trim()
+        select.append(o)
+      }
+      return select
+    }
+    case 'author':
+      return document.createTextNode('')
+    case 'figure': {
+      const div = document.createElement('div')
+      div.style.cssText = 'margin:4px 0'
+      for (const c of el.children) div.append(renderElement(c))
+      return div
+    }
+    case 'img': case 'image': {
+      const img = document.createElement('img')
+      img.src = el.attrs.src || el.attrs.url || ''
+      img.style.cssText = 'max-width:300px;border-radius:4px;display:block'
+      return img
+    }
+    case 'video': {
+      const span = document.createElement('span')
+      span.textContent = '[视频]'
+      span.style.color = '#949ba4'
+      return span
+    }
+    case 'audio': {
+      const span = document.createElement('span')
+      span.textContent = '[音频]'
+      span.style.color = '#949ba4'
+      return span
+    }
+    case 'message': {
+      const div = document.createElement('div')
+      for (const c of el.children) div.append(renderElement(c))
+      if (el.attrs.ephemeral) {
+        const badge = document.createElement('span')
+        badge.textContent = ' 👁仅你可见'
+        badge.style.cssText = 'font-size:11px;color:#949ba4;font-style:italic'
+        div.append(badge)
+      }
+      return div
+    }
+    case 'quote': {
+      const reply = document.createElement('div')
+      reply.className = 'msg-reply'
+      const ava = document.createElement('img')
+      ava.className = 'reply-avatar'
+      ava.src = el.attrs.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'
+      reply.append(ava)
+      const name = document.createElement('span')
+      name.className = 'reply-name'
+      const prefix = el.attrs.silent ? '' : '@'
+      name.textContent = `${prefix}${el.attrs.name || '被引用的用户'}`
+      const text = document.createElement('span')
+      text.className = 'reply-text'
+      text.textContent = el.attrs.text || '这是被引用的消息'
+      reply.append(name, text)
+      return reply
+    }
+    default: {
+      const span = document.createElement('span')
+      span.textContent = el.children.map(c => typeof c === 'string' ? c : c.attrs?.content || '').join('')
+      return span
+    }
+  }
+}
+
+function render(xml) {
+  const output = document.getElementById('output')
+  const error = document.getElementById('error')
+  error.style.display = 'none'
+  output.innerHTML = ''
+  try {
+    const elements = parse(xml)
+    const messages = elements.filter(e => e.type === 'message')
+    if (messages.length) {
+      for (const msg of messages) output.append(renderMsg(msg))
+    } else {
+      const msg = { type:'message', attrs:{}, children:elements }
+      output.append(renderMsg(msg))
+    }
+    // Syntax highlighting
+    output.querySelectorAll('pre code').forEach(block => {
+      hljs.highlightElement(block)
+    })
+  } catch(e) {
+    error.style.display = 'block'
+    error.textContent = 'Parse error: ' + e.message
+  }
+}
+
+const snippets = {
+  b: '<b></b>', i: '<i></i>', u: '<u></u>', s: '<s></s>', spl: '<spl></spl>',
+  code: '<code></code>', 'code-block': '<code-block language="">\n\n</code-block>',
+  a: '<a href=""></a>', at: '<at id=""/>', sharp: '<sharp id=""/>',
+  face: '<face name="" id=""/>', br: '<br/>', blockquote: '<blockquote>\n\n</blockquote>',
+  ul: '<ul>\n<li></li>\n</ul>', ol: '<ol>\n<li></li>\n</ol>',
+  message: '<message>\n\n</message>', author: '<author name="" avatar=""/>',
+  quote: '<quote id=""/>', figure: '<figure>\n<img src=""/>\n\n</figure>',
+  img: '<img src=""/>', video: '<video src=""/>', audio: '<audio src=""/>',
+  button: '<button class="primary"></button>',
+  'discord:select': '<discord:select id="" type="string" placeholder="">\n<discord:option label="" value=""/>\n</discord:select>',
+  'discord:embed': '<discord:embed title="" color="0x5865F2">\n<discord:embed-author name="" iconUrl=""/>\n<discord:embed-field name="" value="" inline="true"/>\n<discord:embed-footer text=""/>\n</discord:embed>',
+}
+function ins(name) {
+  const s = snippets[name] || `<${name}></${name}>`
+  cm.replaceSelection(s)
+  cm.focus()
+}
+
+const cm = CodeMirror.fromTextArea(document.getElementById('input'), {
+  mode: 'xml',
+  theme: 'nord',
+  lineNumbers: false,
+  lineWrapping: true,
+  tabSize: 2,
+})
+const hOut = CodeMirror.fromTextArea(document.getElementById('h-output'), {
+  mode: 'javascript',
+  theme: 'nord',
+  lineNumbers: false,
+  lineWrapping: true,
+  tabSize: 2,
+  readOnly: true,
+})
+hOut.setSize('100%', '100%')
+
+let savedContent = ''
+let viewingSample = false
+
+function update() {
+  render(cm.getValue())
+  try { hOut.setValue(xmlToH(cm.getValue())) } catch(e) {}
+  if (!viewingSample) savedContent = cm.getValue()
+}
+
+function switchTab(edit) {
+  viewingSample = !edit
+  document.getElementById('tab-edit').style.background = edit ? '#5865f2' : '#3f4147'
+  document.getElementById('tab-edit').style.color = edit ? '#fff' : '#b5bac1'
+  document.getElementById('tab-tpl').style.background = edit ? '#3f4147' : '#5865f2'
+  document.getElementById('tab-tpl').style.color = edit ? '#b5bac1' : '#fff'
+  document.getElementById('samples').style.display = edit ? 'none' : 'flex'
+}
+
+function backToEdit() {
+  const wasViewing = viewingSample
+  switchTab(true)
+  if (!wasViewing) return
+  cm.setValue(savedContent)
+  render(savedContent)
+}
+
+function showTemplates() {
+  if (!viewingSample) savedContent = cm.getValue()
+  switchTab(false)
+}
+
+function load(name) {
+  cm.setValue(samples[name])
+  render(samples[name])
+}
+cm.on('change', () => { update(); localStorage.setItem('satori-editor', cm.getValue()) })
+
+const saved = localStorage.getItem('satori-editor')
+if (saved) cm.setValue(saved)
+update()
+
+function xmlToH(xml) {
+  try {
+    return parse(xml.trim()).map(el => {
+      const walk = el => {
+        if (el.type === 'text') return `h.text(${JSON.stringify(el.attrs.content || '')})`
+        const t = JSON.stringify(el.type)
+        const keys = Object.keys(el.attrs)
+        const c = el.children.map(walk)
+        if (!keys.length && !c.length) return `h(${t})`
+        const a = keys.length ? '{' + keys.map(k => `${k}:${JSON.stringify(el.attrs[k])}`).join(',') + '}' : '{}'
+        if (!c.length) return `h(${t},${a})`
+        if (!keys.length) return `h(${t},{},[${c.join(',')}])`
+        return `h(${t},${a},[${c.join(',')}])`
+      }
+      return walk(el)
+    }).join('\n')
+  } catch(e) { return '/* parse error */' }
+}
+
+const samples = {
+  text: `<message name="Koishi">
+普通文字，特殊字符 * _ \` ~ 会被 escape
+@everyone 和 @here 也会被转义
+</message>`,
+  format: `<message>
+<b>粗体 bold</b>
+<i>斜体 italic</i>
+<u>下划线 underline</u>
+<s>删除线 strikethrough</s>
+<spl>点击显示剧透内容</spl>
+</message>`,
+  code: `<message>
+行内 <code>console.log("hello")</code> 代码
+<code-block language="typescript">
+const foo: string = "hello"
+console.log(foo)
+</code-block>
+</message>`,
+  link: `<message>
+<a href="https://koishi.chat">Koishi 官网</a>
+<at id="123">用户</at>、<at type="here">here</at>、<sharp id="456">频道</sharp>
+<blockquote>这是一段引用文字</blockquote>
+</message>`,
+  list: `<message>
+<ul>
+<li>无序列表 A</li>
+<li>无序列表 B</li>
+</ul>
+<ol>
+<li>有序列表 1</li>
+<li>有序列表 2</li>
+</ol>
+</message>`,
+  embed: `<message name="Koishi" avatar="https://koishi.chat/logo.png">
+<discord:embed title="嵌入消息标题" description="这是描述文字" url="https://koishi.chat" color="0x5865F2">
+  <discord:embed-author name="作者名" iconUrl="https://koishi.chat/logo.png" url="https://koishi.chat"/>
+  <discord:embed-field name="字段A" value="值A" inline="true"/>
+  <discord:embed-field name="字段B" value="值B" inline="true"/>
+  <discord:embed-footer text="底部信息" iconUrl="https://koishi.chat/logo.png"/>
+</discord:embed>
+<discord:embed title="第二个 Embed" color="0xFEE75C">
+  <discord:embed-image url="https://koishi.chat/logo.png"/>
+</discord:embed>
+</message>`,
+  button: `<message>
+<button class="primary">主按钮</button>
+<button class="secondary">次要</button>
+<button class="success">成功</button>
+<button class="danger">危险</button>
+<button type="link" href="https://koishi.chat">链接按钮</button>
+</message>`,
+  select: `<message>
+<discord:select id="demo" type="string" placeholder="选择一个颜色">
+  <discord:option label="🔴 红色" value="red" description="热情的红色"/>
+  <discord:option label="🟢 绿色" value="green" description="清新的绿色"/>
+  <discord:option label="🔵 蓝色" value="blue" description="冷静的蓝色"/>
+</discord:select>
+</message>`,
+  quote: `<message>
+<quote id="123"/>
+收到，我来处理（会 @ 对方）
+</message>
+
+<message>
+<quote id="456" silent="true"/>
+收到，不 @ 对方
+</message>
+
+<message>
+<author name="自定义" avatar="https://cdn.discordapp.com/embed/avatars/1.png"/>
+<quote id="789" silent="true"/>
+自定义发送者回复（webhook，embed 样式）
+</message>`,
+  figure: `<message>
+<figure>
+<img src="https://koishi.chat/logo.png"/>
+图片下方的说明文字
+</figure>
+</message>`,
+  media: `<message>
+<img src="https://koishi.chat/logo.png"/>
+<video src="https://www.w3schools.com/html/mov_bbb.mp4"/>
+<audio src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" duration="10"/>
+</message>`,
+  nested: `<message>
+<b>粗体中的<i>粗斜体</i>文字</b> + <spl>剧透中的<code>代码</code></spl>
+</message>`,
+  complex: `<message>
+<author name="Koishi" avatar="https://koishi.chat/logo.png"/>
+<b>欢迎使用</b> <i>Satori</i> 元素编辑器
+
+<code-block language="ts">
+const greeting = "hello world"
+</code-block>
+
+<discord:embed title="功能说明" color="0x5865F2">
+  <discord:embed-field name="Format" value="b/i/u/s/code" inline="true"/>
+  <discord:embed-field name="Embed" value="title/field/footer" inline="true"/>
+  <discord:embed-field name="Components" value="button/select" inline="true"/>
+  <discord:embed-footer text="Satori → Discord Preview"/>
+</discord:embed>
+
+<button class="primary">👍 赞</button>
+<button class="secondary">👎 踩</button>
+</message>`,
+}
+</script>
+</body>
+</html>

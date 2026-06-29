@@ -372,12 +372,7 @@ export function apply(ctx: Context, _config: Config) {
         return
       }
       if (types[0] === 'test') {
-        await session.send(`<message>
-<blockquote>这是一段引用文字<br/><code-block language="typescript">
-const foo: string = "hello"
-console.log(foo)
-</code-block><br/>第三行</blockquote>
-</message>`)
+        await session.send(``)
         return
       }
 
