@@ -157,7 +157,11 @@ function buildElements(type: string, session: Session): h[] | null {
     // ========== 引用/转发 ==========
     case 'quote':
       el.push(h('quote', { id: session.messageId }))
-      el.push(h.text('这是一条回复消息'))
+      el.push(h.text('这是一条回复消息(会@对方)'))
+      el.push(h('message', {}, [
+        h('quote', { id: session.messageId, silent: true }),
+        h.text('这是一条静默回复(不会@对方)'),
+      ]))
       break
 
     case 'figure':
@@ -365,6 +369,15 @@ export function apply(ctx: Context, _config: Config) {
           if (elems) await session.send(h('message', { id: t }, elems))
         }
         await session.send(`--- 全部 ${ALL_TYPES.length} 种发送完毕 ---`)
+        return
+      }
+      if (types[0] === 'test') {
+        await session.send(`<message>
+<blockquote>这是一段引用文字<br/><code-block language="typescript">
+const foo: string = "hello"
+console.log(foo)
+</code-block><br/>第三行</blockquote>
+</message>`)
         return
       }
 
