@@ -306,7 +306,7 @@ function buildElements(type: string, session: Session): h[] | null {
     // 直接发 ephemeral（仅 slash command 有效）
     case 'once-ephemeral':
       el.push(h('message', { ephemeral: true }, [
-        h.text('👀 这条消息只有你能看到！如果你是用斜线指令触发的。'),
+        h.text('👀 这条消息只有你能看到！(slash command 直发)'),
       ]))
       break
 
