@@ -372,7 +372,10 @@ export function apply(ctx: Context, _config: Config) {
         return
       }
       if (types[0] === 'test') {
-        await session.send(`<b>1</b><i>1.5</i><b>2</b><b>3</b>`)
+        await session.send(`<message>
+<a href="https://koishi.chat">链接</a> <at id="123"/> <sharp id="456"/> <face name="smile" id="0"/>
+第一行<br/>第二行
+</message>`)
         return
       }
 
