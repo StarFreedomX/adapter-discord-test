@@ -165,6 +165,10 @@ pre code.hljs { background:none; padding:0; font-size:inherit; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/javascript/javascript.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 <script>
+fetch('emoji-name.json').then(r => r.json()).then(n2cp => {
+  window._emojiNames = n2cp
+})
+
 // Parser
 function parse(xml) {
   xml = xml.trim()
@@ -468,7 +472,27 @@ function renderElement(el) {
     case 'face': {
       const span = document.createElement('span')
       span.className = 'emoji'
-      span.textContent = `:${el.attrs.name}:`
+      const name = el.attrs.name || ''
+      const id = el.attrs.id || '0'
+      const cp = window._emojiNames?.[name]
+      if (cp) {
+        // Built-in emoji via twemoji CDN
+        const img = document.createElement('img')
+        img.src = `https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/svg/${cp}.svg`
+        img.alt = `:${name}:`
+        img.style.cssText = 'width:22px;height:22px;vertical-align:middle;object-fit:contain'
+        span.append(img)
+      } else if (id !== '0') {
+        const ext = el.attrs.animated ? 'gif' : 'webp'
+        const img = document.createElement('img')
+        img.src = `https://cdn.discordapp.com/emojis/${id}.${ext}?size=40`
+        img.alt = `:${name}:`
+        img.style.cssText = 'width:22px;height:22px;vertical-align:middle;object-fit:contain'
+        img.onerror = () => { img.remove(); span.textContent = `:${name}:` }
+        span.append(img)
+      } else {
+        span.textContent = `:${name}:`
+      }
       return span
     }
     case 'share':
