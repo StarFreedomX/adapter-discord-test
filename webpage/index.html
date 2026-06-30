@@ -164,19 +164,27 @@ pre code.hljs { background:none; padding:0; font-size:inherit; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/xml/xml.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/javascript/javascript.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/vanilla-lazyload@19.1.3/dist/lazyload.min.js"></script>
+
 <script>
-fetch('emoji-name.json').then(r => r.json()).then(n2cp => {
+Promise.all([
+  fetch('emoji-name.json').then(r => r.json()),
+  fetch('emoji-svg.json').then(r => r.json()),
+  fetch('emoji-sprite.json?v=2').then(r => r.json()),
+]).then(([n2cp, svgData, spriteData]) => {
   const clean = {}, seen = {}
   for (const [k, v] of Object.entries(n2cp)) {
     if (!/^[0-9a-f]+(-[0-9a-f]+)*$/.test(v)) continue
     if (!seen[v] || k.length < seen[v].length) seen[v] = k
   }
-  // _emojiNames: all names for renderer lookup
   window._emojiNames = n2cp
-  // _emojiPicker: deduped (shortest name per codepoint) for picker
+  window._emojiSvg = svgData
+  window._emojiSprite = spriteData
   window._emojiPicker = {}
-  for (const [cp, name] of Object.entries(seen)) window._emojiPicker[name] = cp
+  for (const [cp, name] of Object.entries(seen)) {
+    if (spriteData[name]?.si != null) window._emojiPicker[name] = cp
+  }
+  if (document.getElementById('emoji-picker').style.display === 'block') rebuildEmojiGrid('')
+  update()
 })
 
 // Parser
@@ -487,26 +495,32 @@ function renderElement(el) {
       const cp = window._emojiNames?.[name]
       if (cp) {
         const codes = cp.split('-').map(h => parseInt(h, 16))
-        const img = document.createElement('img')
-        img.alt = `:${name}:`
-        img.style.cssText = 'width:22px;height:22px;vertical-align:middle;object-fit:contain'
-        img.onerror = () => {
-          if (!img.dataset.errs) { img.dataset.errs = '1'; setTimeout(() => img.src = img.src, 300); return }
-          if (+img.dataset.errs < 3) { img.dataset.errs = String(+img.dataset.errs + 1); setTimeout(() => img.src = img.src.replace(/&r=\d+/, '&r=' + img.dataset.errs), 500); return }
-          img.remove(); span.textContent = String.fromCodePoint(...codes); span.className = ''
+        const d = window._emojiSprite?.[name]
+        const si = d?.si
+        if (si != null) {
+          const R = 36, sheet = d?.div ? 'emoji-sprite2.png' : 'emoji-sprite.png'
+          const COLS = d?.div ? 10 : 42
+          const row = Math.floor(si / COLS), col = si % COLS
+          const div = document.createElement('div')
+          div.style.cssText = `width:${R}px;height:${R}px;display:inline-block;vertical-align:middle;background:url(${sheet});background-size:${COLS*R}px auto;background-position:-${col*R}px -${row*R}px`
+          span.append(div)
+        } else if (window._emojiSvg?.[cp]) {
+          const img = document.createElement('img')
+          img.src = 'data:image/svg+xml;base64,' + window._emojiSvg[cp]
+          img.alt = `:${name}:`
+          img.style.cssText = 'width:36px;height:36px;vertical-align:middle;object-fit:contain'
+          img.onerror = () => { img.remove(); span.textContent = String.fromCodePoint(...codes); span.className = ''; span.style.fontSize = '36px'; span.style.verticalAlign = 'middle' }
+          span.append(img)
+        } else {
+          span.textContent = String.fromCodePoint(...codes); span.className = ''
+          span.style.fontSize = '36px'; span.style.verticalAlign = 'middle'
         }
-        const url = `https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/svg/${cp}.svg`
-        fetch(url, {method:'HEAD'}).then(r => {
-          if (r.ok) img.src = url
-          else { span.textContent = String.fromCodePoint(...codes); span.className = '' }
-        }).catch(() => { img.src = url })
-        span.append(img)
       } else if (id !== '0') {
         const ext = el.attrs.animated ? 'gif' : 'webp'
         const img = document.createElement('img')
         img.src = `https://cdn.discordapp.com/emojis/${id}.${ext}?size=40`
         img.alt = `:${name}:`
-        img.style.cssText = 'width:22px;height:22px;vertical-align:middle;object-fit:contain'
+        img.style.cssText = 'width:36px;height:36px;vertical-align:middle;object-fit:contain'
         img.onerror = () => { img.remove(); span.textContent = `:${name}:` }
         span.append(img)
       } else {
@@ -947,19 +961,18 @@ console.log(foo)
 </script>
 <div id="emoji-picker" style="display:none;position:fixed;top:120px;left:50%;transform:translateX(-50%);width:360px;max-height:400px;background:#2b2d31;border:1px solid #3f4147;border-radius:8px;z-index:100;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.5)">
   <div style="padding:8px;border-bottom:1px solid #3f4147"><input id="emoji-search" placeholder="搜索表情..." style="width:100%;padding:6px 10px;background:#1e1f22;color:#dcddde;border:1px solid #3f4147;border-radius:4px;font-size:13px;outline:none" oninput="filterEmoji()"></div>
-  <div id="emoji-grid" style="padding:8px;overflow-y:auto;max-height:340px;display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start"></div>
+  <div id="emoji-grid" style="padding:8px;overflow:hidden;display:grid;grid-template-columns:repeat(auto-fill,32px);gap:4px;justify-content:center;min-height:300px"></div>
 </div>
 
 <script>
-let emojiPickerVisible = false, emojiBatch = 0, emojiFilter = ''
+let emojiPickerVisible = false, emojiFiltered = []
 
 function toggleEmojiPicker() {
   emojiPickerVisible = !emojiPickerVisible
   document.getElementById('emoji-picker').style.display = emojiPickerVisible ? 'block' : 'none'
   if (emojiPickerVisible) {
-    document.getElementById('emoji-grid').innerHTML = ''
     document.getElementById('emoji-search').value = ''
-    emojiBatch = 0; emojiFilter = ''; loadEmojiBatch()
+    rebuildEmojiGrid('')
   }
 }
 document.addEventListener('click', e => {
@@ -968,66 +981,70 @@ document.addEventListener('click', e => {
   }
 })
 
-const emojiObserver = new IntersectionObserver(e => { if (e[0].isIntersecting) loadEmojiBatch() })
-const lazyLoad = new LazyLoad({ elements_selector: '.lazy' })
-
-function loadEmojiBatch() {
-  if (emojiFilter) return
-  const grid = document.getElementById('emoji-grid')
-  const names = window._emojiPicker || {}
-  const entries = Object.entries(names)
-  if (!grid.querySelector('#emoji-sentinel')) {
-    const s = document.createElement('div'); s.id = 'emoji-sentinel'; s.style.cssText = 'width:100%;height:1px'
-    grid.append(s); emojiObserver.observe(s)
-  }
-  const start = emojiBatch * 80, end = Math.min(start + 80, entries.length)
-  for (let i = start; i < end; i++) addEmojiBtn(grid, entries[i][0], entries[i][1])
-  emojiBatch++
-  if (end >= entries.length) {
-    const s = grid.querySelector('#emoji-sentinel')
-    if (s) { emojiObserver.unobserve(s); s.remove() }
-  }
-  lazyLoad.update()
-}
-
-function addEmojiBtn(grid, name, cp) {
-  const btn = document.createElement('button')
-  btn.title = name
-  btn.style.cssText = 'width:32px;height:32px;padding:2px;background:transparent;border:none;cursor:pointer;border-radius:4px'
-  btn.onmouseenter = () => btn.style.background = '#3f4147'
-  btn.onmouseleave = () => btn.style.background = 'transparent'
-  btn.onclick = () => { insertEmoji(name); toggleEmojiPicker() }
-  const codes = cp.split('-').map(h => parseInt(h, 16))
-  const img = document.createElement('img')
-  img.className = 'lazy'
-  img.dataset.src = `https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/svg/${cp}.svg`
-  img.style.cssText = 'width:24px;height:24px'
-  img.onerror = () => {
-    if (!img.dataset.errs) { img.dataset.errs = '1'; setTimeout(() => img.src = img.src, 300); return }
-    if (+img.dataset.errs < 3) { img.dataset.errs = String(+img.dataset.errs + 1); setTimeout(() => img.src = img.src.replace(/&r=\d+/, '&r=' + img.dataset.errs), 500); return }
-    img.remove(); btn.textContent = String.fromCodePoint(...codes); btn.style.fontSize = '20px'
-  }
-  fetch(img.dataset.src, {method:'HEAD'}).then(r => {
-    if (r.ok) img.classList.add('lazy')
-    else { btn.textContent = String.fromCodePoint(...codes); btn.style.fontSize = '20px' }
-  }).catch(() => { img.classList.add('lazy') })
-  btn.append(img)
-  grid.append(btn)
-}
+// Virtual scroll: only render ~60 visible emojis, spacer divs for scroll position
+let emojiPage = 0
+const PAGE_SIZE = 72
 
 function rebuildEmojiGrid(filter) {
-  emojiFilter = filter
   const grid = document.getElementById('emoji-grid')
   grid.innerHTML = ''
   const names = window._emojiPicker || {}
-  const all = Object.entries(names).filter(([n]) => !filter || n.includes(filter)).slice(0, 200)
-  for (const [name, cp] of all) addEmojiBtn(grid, name, cp)
+  const filtered = Object.entries(names).filter(([n]) => !filter || n.includes(filter))
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  if (filter) emojiPage = 0
+  if (emojiPage >= totalPages) emojiPage = totalPages - 1
+  const start = emojiPage * PAGE_SIZE
+  const page = filtered.slice(start, start + PAGE_SIZE)
+  for (const [name, cp] of page) {
+    const btn = document.createElement('button')
+    btn.title = name
+    btn.style.cssText = 'width:32px;height:32px;padding:2px;background:transparent;border:none;cursor:pointer;border-radius:4px;font-size:20px;text-align:center;line-height:32px'
+    btn.onmouseenter = () => btn.style.background = '#3f4147'
+    btn.onmouseleave = () => btn.style.background = 'transparent'
+    btn.onclick = () => { insertEmoji(name); toggleEmojiPicker() }
+    const codes = cp.split('-').map(h => parseInt(h, 16))
+    const si = window._emojiSprite?.[name]?.si
+    if (si != null) {
+      const d = window._emojiSprite?.[name]
+      const sheet = d?.div ? 'emoji-sprite2.png' : 'emoji-sprite.png'
+      const si = d?.si, R = 32
+      const COLS = d?.div ? 10 : 42
+      const row = Math.floor(si / COLS), col = si % COLS
+      const div = document.createElement('div')
+      div.style.cssText = `width:${R}px;height:${R}px;background:url(${sheet});background-size:${COLS*R}px auto;background-position:-${col*R}px -${row*R}px`
+      btn.append(div)
+    } else if (window._emojiSvg?.[cp]) {
+      const img = document.createElement('img')
+      img.src = 'data:image/svg+xml;base64,' + window._emojiSvg[cp]
+      img.style.cssText = 'width:24px;height:24px'
+      btn.append(img)
+    } else {
+      btn.textContent = String.fromCodePoint(...codes); btn.style.fontSize = '20px'
+    }
+    grid.append(btn)
+  }
+  // Page nav
+  const nav = document.createElement('div')
+  nav.style.cssText = 'grid-column:1/-1;display:flex;justify-content:center;align-items:center;gap:8px;padding:4px 0'
+  const prev = document.createElement('button')
+  prev.textContent = '◀'; prev.style.cssText = 'background:#3f4147;color:#dcddde;border:none;padding:2px 8px;border-radius:3px;cursor:pointer'
+  prev.onclick = (e) => { e.stopPropagation(); if (emojiPage > 0) { emojiPage--; rebuildEmojiGrid(filter) } }
+  nav.append(prev)
+  const info = document.createElement('span')
+  info.textContent = `${emojiPage + 1} / ${totalPages}`; info.style.cssText = 'color:#949ba4;font-size:12px'
+  nav.append(info)
+  const next = document.createElement('button')
+  next.textContent = '▶'; next.style.cssText = prev.style.cssText
+  next.onclick = (e) => { e.stopPropagation(); if (emojiPage < totalPages - 1) { emojiPage++; rebuildEmojiGrid(filter) } }
+  nav.append(next)
+  grid.append(nav)
 }
 
-document.getElementById('emoji-grid').addEventListener('scroll', function() {
-  if (emojiFilter) return
-  const g = this
-  if (g.scrollTop + g.clientHeight >= g.scrollHeight - 40) loadEmojiBatch()
+// Keyboard nav
+document.addEventListener('keydown', e => {
+  if (!emojiPickerVisible) return
+  if (e.key === 'ArrowLeft') { if (emojiPage > 0) { emojiPage--; rebuildEmojiGrid(document.getElementById('emoji-search').value) } }
+  if (e.key === 'ArrowRight') { emojiPage++; rebuildEmojiGrid(document.getElementById('emoji-search').value) }
 })
 
 function filterEmoji() {
