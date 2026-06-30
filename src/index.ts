@@ -288,7 +288,7 @@ function buildElements(type: string, session: Session): h[] | null {
       el.push(h.text('点击按钮打开注册表单: '))
       el.push(h('button', {
         type: 'input',
-        id: 'input:register-form',
+        id: 'register-form',
         class: 'primary',
         text: '📝 注册',
       }, [
@@ -372,7 +372,7 @@ export function apply(ctx: Context, _config: Config) {
         return
       }
       if (types[0] === 'test') {
-        await session.send(``)
+        await session.send(`<b>1</b><i>1.5</i><b>2</b><b>3</b>`)
         return
       }
 
@@ -425,7 +425,7 @@ export function apply(ctx: Context, _config: Config) {
     if (!modal) return // 不是 modal 提交（是 slash command），跳过
     console.log(`[Modal提交] id=${modal.custom_id} fields=`, modal.fields)
     const lines = Object.entries(modal.fields as Record<string, string>)
-      .map(([k, v]) => `**${k}**: ${v || '(空)'}`)
-    return session.send(`📋 表单已提交:\n${lines.join('\n')}`)
+      .flatMap(([k, v]) => [h('b', {}, [h.text(k)]), h.text(`: ${v || '(空)'}`), h('br')])
+    return session.send(h('message', {}, [h.text('📋 表单已提交:\n'), ...lines]))
   })
 }
