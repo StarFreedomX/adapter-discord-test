@@ -105,40 +105,43 @@ pre code.hljs { background:none; padding:0; font-size:inherit; }
     <button onclick="showTemplates()" id="tab-tpl" style="background:#3f4147;color:#b5bac1;border:none;padding:6px 14px;font-size:13px;cursor:pointer;border-radius:4px 4px 0 0">📋 模板</button>
   </div>
   <div id="samples" style="background:#2b2d31;padding:4px 16px;display:none">
-    <button onclick="load('text')">文本</button>
-    <button onclick="load('format')">格式</button>
-    <button onclick="load('code')">代码</button>
-    <button onclick="load('link')">链接+引用</button>
-    <button onclick="load('list')">列表</button>
-    <button onclick="load('embed')">Embed</button>
-    <button onclick="load('button')">Button</button>
-    <button onclick="load('select')">Select</button>
-    <button onclick="load('quote')">回复</button>
-    <button onclick="load('figure')">图文</button>
-    <button onclick="load('media')">媒体</button>
-    <button onclick="load('nested')">嵌套</button>
-<button onclick="load('complex')">复杂组合</button>
+    <button onclick="load('text')" title="普通文字">文本</button>
+    <button onclick="load('format')" title="b/i/u/s/spl">格式</button>
+    <button onclick="load('code')" title="code/code-block">代码</button>
+    <button onclick="load('link')" title="a/at/sharp/blockquote">链接+引用</button>
+    <button onclick="load('list')" title="ul/ol/li">列表</button>
+    <button onclick="load('embed')" title="discord:embed 结构化">Embed</button>
+    <button onclick="load('button')" title="交互按钮">Button</button>
+    <button onclick="load('select')" title="选择菜单">Select</button>
+    <button onclick="load('quote')" title="回复/静默回复">回复</button>
+    <button onclick="load('figure')" title="图文组合">图文</button>
+    <button onclick="load('media')" title="img/video/audio">媒体</button>
+    <button onclick="load('nested')" title="嵌套格式">嵌套</button>
+    <button onclick="load('modal')" title="多字段表单">Modal</button>
+<button onclick="load('complex')" title="综合展示">复杂组合</button>
   </div>
   <div class="insert-bar">
     <span class="insert-label">插入:</span>
-    <button onclick="ins('b')">b</button><button onclick="ins('i')">i</button>
-    <button onclick="ins('u')">u</button><button onclick="ins('s')">s</button>
-    <button onclick="ins('spl')">spl</button><button onclick="ins('code')">code</button>
-    <button onclick="ins('code-block')">code-block</button><button onclick="ins('a')">a</button>
-    <button onclick="ins('at')">at</button><button onclick="ins('sharp')">sharp</button>
-    <button onclick="ins('face')">face</button><button onclick="ins('br')">br</button>
-    <button onclick="ins('blockquote')">blockquote</button>
-    <button onclick="ins('ul')">ul</button><button onclick="ins('ol')">ol</button>
+    <button onclick="ins('b')" title="粗体">b</button><button onclick="ins('i')" title="斜体">i</button>
+    <button onclick="ins('u')" title="下划线">u</button><button onclick="ins('s')" title="删除线">s</button>
+    <button onclick="ins('spl')" title="遮罩">spl</button><button onclick="ins('code')" title="行内代码">code</button>
+    <button onclick="ins('code-block')" title="代码块">code-block</button><button onclick="ins('a')" title="链接">a</button>
+    <button onclick="ins('at')" title="@提及">at</button><button onclick="ins('sharp')" title="#频道">sharp</button>
+    <button onclick="ins('face')" title="表情">face</button><button onclick="ins('br')" title="换行">br</button>
+    <button onclick="ins('blockquote')" title="引用">blockquote</button>
+    <button onclick="ins('ul')" title="无序列表">ul</button><button onclick="ins('ol')" title="有序列表">ol</button>
   </div>
   <div class="insert-bar">
     <span class="insert-label">结构:</span>
-    <button onclick="ins('message')">message</button><button onclick="ins('author')">author</button>
-    <button onclick="ins('quote')">quote</button><button onclick="ins('figure')">figure</button>
-    <button onclick="ins('img')">img</button>
-    <button onclick="ins('video')">video</button><button onclick="ins('audio')">audio</button>
-    <button onclick="ins('button')">button</button>
-    <button onclick="ins('discord:select')">select</button>
-    <button onclick="ins('discord:embed')">embed</button>
+    <button onclick="ins('message')" title="消息容器">message</button><button onclick="ins('author')" title="自定义发送者">author</button>
+    <button onclick="ins('quote')" title="回复引用">quote</button><button onclick="ins('figure')" title="图文组合">figure</button>
+    <button onclick="ins('img')" title="图片">img</button>
+    <button onclick="ins('video')" title="视频">video</button><button onclick="ins('audio')" title="音频">audio</button>
+    <button onclick="ins('button')" title="按钮">button</button>
+    <button onclick="ins('discord:select')" title="选择菜单">select</button>
+    <button onclick="ins('discord:embed')" title="结构化嵌入消息">embed</button>
+    <button onclick="ins('modal-btn')" title="模态表单按钮">modal</button>
+    <button onclick="ins('discord:modal-input')" title="表单输入字段">modal-input</button>
   </div>
   <div class="editor-wrapper" id="editor-wrapper">
     <textarea id="input" spellcheck="false">
@@ -619,6 +622,8 @@ const snippets = {
   img: '<img src=""/>', video: '<video src=""/>', audio: '<audio src=""/>',
   button: '<button class="primary"></button>',
   'discord:select': '<discord:select id="" type="string" placeholder="">\n<discord:option label="" value=""/>\n</discord:select>',
+  'modal-btn': '<button type="input" id="my-form" class="primary" text="打开表单">\n<discord:modal-input label="" id="" placeholder=""/>\n</button>',
+  'discord:modal-input': '<discord:modal-input label="" id="" placeholder=""/>',
   'discord:embed': '<discord:embed title="" color="0x5865F2">\n<discord:embed-author name="" iconUrl=""/>\n<discord:embed-field name="" value="" inline="true"/>\n<discord:embed-footer text=""/>\n</discord:embed>',
 }
 function ins(name) {
@@ -791,6 +796,13 @@ console.log(foo)
 </message>`,
   nested: `<message>
 <b>粗体中的<i>粗斜体</i>文字</b> + <spl>剧透中的<code>代码</code></spl>
+</message>`,
+  modal: `<message>
+<button type="input" id="reg-form" class="primary" text="📝 注册表单">
+<discord:modal-input label="用户名" id="username" required="true" placeholder="输入用户名"/>
+<discord:modal-input label="邮箱" id="email" placeholder="user@example.com"/>
+<discord:modal-input label="简介" id="bio" style="paragraph" placeholder="介绍一下你自己..."/>
+</button>
 </message>`,
   complex: `<message>
 <author name="Koishi" avatar="https://koishi.chat/logo.png"/>
