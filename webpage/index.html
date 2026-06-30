@@ -105,20 +105,17 @@ pre code.hljs { background:none; padding:0; font-size:inherit; }
     <button onclick="showTemplates()" id="tab-tpl" style="background:#3f4147;color:#b5bac1;border:none;padding:6px 14px;font-size:13px;cursor:pointer;border-radius:4px 4px 0 0">📋 模板</button>
   </div>
   <div id="samples" style="background:#2b2d31;padding:4px 16px;display:none">
-    <button onclick="load('text')" title="普通文字">文本</button>
-    <button onclick="load('format')" title="b/i/u/s/spl">格式</button>
-    <button onclick="load('code')" title="code/code-block">代码</button>
-    <button onclick="load('link')" title="a/at/sharp/blockquote">链接+引用</button>
-    <button onclick="load('list')" title="ul/ol/li">列表</button>
-    <button onclick="load('embed')" title="discord:embed 结构化">Embed</button>
-    <button onclick="load('button')" title="交互按钮">Button</button>
-    <button onclick="load('select')" title="选择菜单">Select</button>
-    <button onclick="load('quote')" title="回复/静默回复">回复</button>
-    <button onclick="load('figure')" title="图文组合">图文</button>
-    <button onclick="load('media')" title="img/video/audio">媒体</button>
-    <button onclick="load('nested')" title="嵌套格式">嵌套</button>
-    <button onclick="load('modal')" title="多字段表单">Modal</button>
-<button onclick="load('complex')" title="综合展示">复杂组合</button>
+    <span style="color:#949ba4;font-size:12px">模板:</span>
+    <button onclick="loadTpl('fmt')" title="b/i/u/s/spl">b/i/u/s/spl</button>
+    <button onclick="loadTpl('code')" title="code/code-block">code/code-block</button>
+    <button onclick="loadTpl('a')" title="a/at/sharp/face/br">a/at/sharp/face/br</button>
+    <button onclick="loadTpl('blockquote')" title="blockquote/ul/ol">blockquote/ul/ol</button>
+    <button onclick="loadTpl('message')" title="message/author">message/author</button>
+    <button onclick="loadTpl('quote')" title="quote/figure">quote/figure</button>
+    <button onclick="loadTpl('img')" title="img/video/audio">img/video/audio</button>
+    <button onclick="loadTpl('button')" title="button/select/embed/modal">button/select/embed/modal</button>
+    <span style="color:#949ba4;font-size:12px;margin-left:8px">示例:</span>
+<button onclick="load('complex')" title="综合展示">查看</button>
   </div>
   <div class="insert-bar">
     <span class="insert-label">插入:</span>
@@ -680,6 +677,24 @@ function showTemplates() {
   switchTab(false)
 }
 
+const templates = {
+  fmt: '<message>\n<b>粗体</b> <i>斜体</i> <u>下划线</u> <s>删除线</s> <spl>剧透</spl>\n</message>',
+  code: '<message>\n行内 <code>console.log("hi")</code>\n<code-block language="ts">\nconst x = 1\n</code-block>\n</message>',
+  a: '<message>\n<a href="https://koishi.chat">链接</a> <at id="123"/> <sharp id="456"/> <face name="smile" id="0"/>\n第一行<br/>第二行\n</message>',
+  blockquote: '<message>\n<blockquote>引用文字</blockquote>\n<ul>\n<li>无序列表</li>\n</ul>\n<ol>\n<li>有序列表</li>\n</ol>\n</message>',
+  message: '<message>\n<author name="Bot" avatar="https://cdn.discordapp.com/embed/avatars/0.png"/>\n第一条消息\n<message>第二条(分开发送)</message>\n</message>',
+  quote: '<message>\n<quote id="123"/>\n回复消息\n<figure>\n<img src="https://koishi.chat/logo.png"/>\n图片说明\n</figure>\n</message>',
+  img: '<message>\n<img src="https://koishi.chat/logo.png"/>\n<video src="https://example.com/video.mp4"/>\n<audio src="https://example.com/audio.mp3" duration="10"/>\n</message>',
+  button: '<message>\n<button class="primary">按钮</button><button class="secondary">次要</button><button type="link" href="https://koishi.chat">链接</button>\n<discord:select id="s1" type="string" placeholder="选择...">\n<discord:option label="选项A" value="a"/>\n</discord:select>\n<discord:embed title="标题" description="描述" color="0x5865F2">\n<discord:embed-field name="字段" value="值" inline="true"/>\n<discord:embed-footer text="底部"/>\n</discord:embed>\n<button type="input" id="f1" class="primary" text="表单">\n<discord:modal-input label="姓名" id="name"/>\n</button>\n</message>',
+}
+
+function loadTpl(name) {
+  if (!viewingSample) savedContent = cm.getValue()
+  viewingSample = true
+  cm.setValue(templates[name] || `<message>\n<${name}></${name}>\n</message>`)
+  render(cm.getValue())
+}
+
 function load(name) {
   cm.setValue(samples[name])
   render(samples[name])
@@ -806,18 +821,25 @@ console.log(foo)
 </message>`,
   complex: `<message>
 <author name="Koishi" avatar="https://koishi.chat/logo.png"/>
-<b>欢迎使用</b> <i>Satori</i> 元素编辑器
+<b>粗体</b> + <i>斜体</i> + <u>下划线</u> + <s>删除线</s> + <spl>剧透</spl>
+<code>inline code</code> <a href="https://koishi.chat">链接</a> <at id="123"/> <sharp id="456"/>
+<blockquote>引用文字</blockquote>
+<ul><li>无序列表</li></ul><ol><li>有序列表</li></ol>
 
-<code-block language="ts">
-const greeting = "hello world"
-</code-block>
-
-<discord:embed title="功能说明" color="0x5865F2">
-  <discord:embed-field name="Format" value="b/i/u/s/code" inline="true"/>
-  <discord:embed-field name="Embed" value="title/field/footer" inline="true"/>
-  <discord:embed-field name="Components" value="button/select" inline="true"/>
-  <discord:embed-footer text="Satori → Discord Preview"/>
+<discord:embed title="Rich Embed" description="结构化嵌入消息" color="0x5865F2">
+  <discord:embed-author name="Koishi" iconUrl="https://koishi.chat/logo.png"/>
+  <discord:embed-field name="字段A" value="值A" inline="true"/>
+  <discord:embed-field name="字段B" value="值B" inline="true"/>
+  <discord:embed-footer text="Satori → Discord"/>
 </discord:embed>
+
+<quote id="123"/>回复消息
+<button class="primary">按钮</button>
+<button type="link" href="https://koishi.chat">链接</button>
+<discord:select id="s1" type="string" placeholder="选择菜单">
+  <discord:option label="选项1" value="a"/>
+  <discord:option label="选项2" value="b"/>
+</discord:select>
 
 <button class="primary">👍 赞</button>
 <button class="secondary">👎 踩</button>
