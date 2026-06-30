@@ -179,13 +179,16 @@ function parse(xml) {
       if (tagContent.startsWith('/')) {
         break // closing tag, handled by recursion
       }
-      const spaceIdx = tagContent.search(/\s/)
+      // Handle self-closing tags: <br/> → tag=br
+      let selfClosing = tagContent.endsWith('/')
+      const raw = selfClosing ? tagContent.slice(0, -1).trimEnd() : tagContent
+      const spaceIdx = raw.search(/\s/)
       let tag, attrs = {}
       if (spaceIdx === -1) {
-        tag = tagContent
+        tag = raw
       } else {
-        tag = tagContent.slice(0, spaceIdx)
-        const attrStr = tagContent.slice(spaceIdx + 1)
+        tag = raw.slice(0, spaceIdx)
+        const attrStr = raw.slice(spaceIdx + 1)
         const attrRe = /(\S+?)=(?:"([^"]*)"|'([^']*)')/g
         let m
         while ((m = attrRe.exec(attrStr))) {
@@ -193,15 +196,26 @@ function parse(xml) {
         }
       }
       i = close + 1
+      const openTag = `<${tag}`
       const closeTag = `</${tag}>`
-      const closeIdx = xml.indexOf(closeTag, i)
+      // Find matching close tag (handle nesting)
+      let depth = 1, closeIdx = -1, searchFrom = i
+      while (depth > 0) {
+        const nextOpen = xml.indexOf(openTag, searchFrom)
+        const nextClose = xml.indexOf(closeTag, searchFrom)
+        if (nextClose === -1) break
+        if (nextOpen !== -1 && nextOpen < nextClose && tag !== 'br' && tag !== 'img') {
+          depth++
+          searchFrom = nextOpen + openTag.length
+        } else {
+          depth--
+          if (depth === 0) closeIdx = nextClose
+          searchFrom = nextClose + closeTag.length
+        }
+      }
       let children = ''
-      let remaining = ''
-      if (closeIdx === -1) {
-        // Self-closing
-      } else {
+      if (closeIdx !== -1) {
         children = xml.slice(i, closeIdx)
-        remaining = xml.slice(closeIdx + closeTag.length)
         i = closeIdx + closeTag.length
       }
       elements.push({ type:tag, attrs, children:children.trim() ? parse(children) : [] })
@@ -219,10 +233,39 @@ function parse(xml) {
   return elements
 }
 
-function renderMsg(msgEl) {
-  // Extract author info from children
-  const children = msgEl.children || []
-  const authorEl = children.find(c => c.type === 'author')
+function renderMessages(elements) {
+  const result = []
+  for (const el of elements) {
+    if (el.type === 'message') result.push(...renderMsgAsBlocks(el))
+  }
+  return result
+}
+
+// Split a message's children at nested <message> boundaries, each segment = one Discord msg
+function renderMsgAsBlocks(msgEl) {
+  const blocks = []
+  const segments = [{ authorEl: null, children: [] }]
+  let current = segments[0]
+  for (const c of (msgEl.children || [])) {
+    if (c.type === 'message') {
+      blocks.push(current)
+      blocks.push(...renderMsgAsBlocks(c))
+      current = { authorEl: null, children: [] }
+      segments.push(current)
+    } else if (c.type === 'author') {
+      current.authorEl = c
+    } else {
+      current.children.push(c)
+    }
+  }
+  blocks.push(current)
+  return blocks.map(s => s instanceof Node ? s
+    : s.children.length ? buildMsg(msgEl, s.authorEl, s.children) : null
+  ).filter(Boolean)
+}
+
+function buildMsg(msgEl, authorEl, children) {
+  if (!Array.isArray(children)) children = []
   const name = authorEl?.attrs?.name || msgEl.attrs?.name || 'Bot'
   const avatar = authorEl?.attrs?.avatar || msgEl.attrs?.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'
   const initial = name[0]?.toUpperCase() || 'B'
@@ -231,7 +274,7 @@ function renderMsg(msgEl) {
   const body = document.createElement('div')
   body.className = 'msg-body'
 
-  const rendered = children.filter(c => c.type !== 'author').map(el => renderElement(el))
+  const rendered = children.map(el => renderElement(el))
 
   // Extract reply elements — place them in .msg wrapper, before avatar
   // Skip reply-style when author present (adapter renders embed instead)
@@ -591,12 +634,12 @@ function render(xml) {
   output.innerHTML = ''
   try {
     const elements = parse(xml)
-    const messages = elements.filter(e => e.type === 'message')
-    if (messages.length) {
-      for (const msg of messages) output.append(renderMsg(msg))
+    const msgs = renderMessages(elements)
+    if (msgs.length) {
+      for (const m of msgs) output.append(m)
     } else {
       const msg = { type:'message', attrs:{}, children:elements }
-      output.append(renderMsg(msg))
+      output.append(buildMsg(msg, null, elements))
     }
     // Syntax highlighting
     output.querySelectorAll('pre code').forEach(block => {
@@ -682,10 +725,10 @@ const templates = {
   code: '<message>\n行内 <code>console.log("hi")</code>\n<code-block language="ts">\nconst x = 1\n</code-block>\n</message>',
   a: '<message>\n<a href="https://koishi.chat">链接</a> <at id="123"/> <sharp id="456"/> <face name="smile" id="0"/>\n第一行<br/>第二行\n</message>',
   blockquote: '<message>\n<blockquote>引用文字</blockquote>\n<ul>\n<li>无序列表</li>\n</ul>\n<ol>\n<li>有序列表</li>\n</ol>\n</message>',
-  message: '<message>\n<author name="Bot" avatar="https://cdn.discordapp.com/embed/avatars/0.png"/>\n第一条消息\n<message>第二条(分开发送)</message>\n</message>',
+  message: '<message>\n<author name="Bot" avatar="https://cdn.discordapp.com/embed/avatars/0.png"/>\n第一条消息\n</message>\n\n<message>\n第二条(分开发送)\n</message>',
   quote: '<message>\n<quote id="123"/>\n回复消息\n<figure>\n<img src="https://koishi.chat/logo.png"/>\n图片说明\n</figure>\n</message>',
   img: '<message>\n<img src="https://koishi.chat/logo.png"/>\n<video src="https://example.com/video.mp4"/>\n<audio src="https://example.com/audio.mp3" duration="10"/>\n</message>',
-  button: '<message>\n<button class="primary">按钮</button><button class="secondary">次要</button><button type="link" href="https://koishi.chat">链接</button>\n<discord:select id="s1" type="string" placeholder="选择...">\n<discord:option label="选项A" value="a"/>\n</discord:select>\n<discord:embed title="标题" description="描述" color="0x5865F2">\n<discord:embed-field name="字段" value="值" inline="true"/>\n<discord:embed-footer text="底部"/>\n</discord:embed>\n<button type="input" id="f1" class="primary" text="表单">\n<discord:modal-input label="姓名" id="name"/>\n</button>\n</message>',
+  button: '<message>\n<button class="primary">按钮</button><button class="secondary">次要</button><button class="success">成功</button><button class="danger">危险</button><button type="link" href="https://koishi.chat">链接</button>\n</message>\n\n<message>\n<discord:select id="s1" type="string" placeholder="选择...">\n<discord:option label="选项A" value="a"/>\n<discord:option label="选项B" value="b"/>\n</discord:select>\n</message>\n\n<message>\n<discord:embed title="标题" description="描述" color="0x5865F2">\n<discord:embed-field name="字段" value="值" inline="true"/>\n<discord:embed-footer text="底部"/>\n</discord:embed>\n<button type="input" id="f1" class="primary" text="表单">\n<discord:modal-input label="姓名" id="name"/>\n</button>\n</message>',
 }
 
 function loadTpl(name) {
@@ -832,17 +875,22 @@ console.log(foo)
   <discord:embed-field name="字段B" value="值B" inline="true"/>
   <discord:embed-footer text="Satori → Discord"/>
 </discord:embed>
+</message>
 
+<message>
 <quote id="123"/>回复消息
 <button class="primary">按钮</button>
+<button class="secondary">次要</button>
+<button class="success">成功</button>
+<button class="danger">危险</button>
 <button type="link" href="https://koishi.chat">链接</button>
+</message>
+
+<message>
 <discord:select id="s1" type="string" placeholder="选择菜单">
   <discord:option label="选项1" value="a"/>
   <discord:option label="选项2" value="b"/>
 </discord:select>
-
-<button class="primary">👍 赞</button>
-<button class="secondary">👎 踩</button>
 </message>`,
 }
 </script>
